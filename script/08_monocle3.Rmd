@@ -1,0 +1,107 @@
+---
+title: "Byst_monocle3"
+output: html_document
+date: "2025-04-03"
+---
+
+```{r setup, include=FALSE}
+library(Seurat)
+library(SeuratWrappers)
+library(monocle3)
+```
+
+
+```{r cars}
+Cord_byst <- readRDS("/home/jaehyunchoi/project/Byst_collaboration/analysis/Cord_bystR.rds")
+cds <- as.cell_data_set(Cord_byst, )
+cds
+
+cds <- reduce_dimension(cds)
+cds <- reduce_dimension(cds, reduction_method = "UMAP")
+cds <- cluster_cells(cds)
+cds <- learn_graph(cds)
+colData(cds)$Celltype <- Cord_byst$celltype
+root_cells <- colnames(cds)[cds@colData$Celltype == "PD-1_high"]
+plot_cells(cds, color_cells_by = "Celltype")
+
+pdf("/home/jaehyunchoi/project/Byst_collaboration/analysis/monocle3_plot_1.pdf", width = 8, height = 6)
+plot_cells(cds, color_cells_by = "Celltype")
+dev.off()
+pdf("/home/jaehyunchoi/project/Byst_collaboration/analysis/monocle3_plot_2.pdf", width = 8, height = 6)
+plot_cells(cds, label_groups_by_cluster=FALSE,  color_cells_by = "Celltype")
+dev.off()
+pdf("/home/jaehyunchoi/project/Byst_collaboration/analysis/monocle3_plot_3.pdf", width = 8, height = 6)
+plot_cells(cds,
+           color_cells_by = "pseudotime",
+           label_cell_groups=FALSE,
+           label_leaves=FALSE,
+           label_branch_points=FALSE,
+           graph_label_size=1.5)
+dev.off()
+cds <- order_cells(cds, root_cells = root_cells[1])
+cds <- order_cells(cds)
+pseudotime(cds)
+
+
+pdf("/home/jaehyunchoi/project/Byst_collaboration/analysis/monocle3_plot.pdf", width = 8, height = 6)
+plot_cells(cds, label_groups_by_cluster = FALSE, color_cells_by = "celltype")
+dev.off()
+```
+
+# Harmony 진행한 이후
+
+```{r}
+Cord_bysT <- readRDS("/home/jaehyunchoi/project/Byst_collaboration/analysis/Cord_byst_ver2.rds")
+cds1 <- as.cell_data_set(Cord_bysT, )
+cds1
+colData(cds1)$Celltype <- Cord_bysT$celltype
+pdf("/home/jaehyunchoi/project/Byst_collaboration/analysis/monocle3_plot_hm1.pdf", width = 8, height = 6)
+plot_cells(cds1, color_cells_by = "Celltype")
+dev.off()
+#cds1 <- reduce_dimension(cds1, reduction_method = "UMAP")
+cds1 <- cluster_cells(cds1)
+cds1 <- learn_graph(cds1)
+cds1 <- order_cells(cds1)
+pseudotime(cds1)
+
+pdf("/home/jaehyunchoi/project/Byst_collaboration/analysis/monocle3_plot_1_2.pdf", width = 8, height = 6)
+plot_cells(cds1,
+           color_cells_by = "pseudotime",
+           label_cell_groups=FALSE,
+           label_leaves=FALSE,
+           label_branch_points=FALSE,
+           graph_label_size=1.5)
+dev.off()
+
+cds1_sub <- choose_graph_segments(cds1)
+
+
+colData(cds1)$Celltype <- Cord_byst$celltype
+root_cells <- colnames(cds1)[cds1@colData$Celltype == "PD-1_high"]
+plot_cells(cds1, color_cells_by = "Celltype")
+```
+
+```{r cars}
+# preprocess부터 다시 시작 
+Cord_bysT <- readRDS("/home/jaehyunchoi/project/Byst_collaboration/analysis/Cord_byst_ver2.rds")
+gene_symbols <- rownames(Cord_bysT)
+rowData(cds)$gene_short_name <- gene_symbols
+cds <- as.cell_data_set(Cord_bysT, )
+cds <- preprocess_cds(cds, num_dim = 100)
+#pca check
+pdf("/home/jaehyunchoi/project/Byst_collaboration/analysis/monocle3_plot_cds_pca.pdf", width = 8, height = 6)
+plot_pc_variance_explained(cds)
+dev.off()
+#
+cds <- reduce_dimension(cds)
+pdf("/home/jaehyunchoi/project/Byst_collaboration/analysis/monocle3_plot_cds_reduc.pdf", width = 8, height = 6)
+plot_cells(cds)
+dev.off()
+
+colData(cds)$Celltype <- Cord_bysT$celltype
+pdf("/home/jaehyunchoi/project/Byst_collaboration/analysis/monocle3_plot_cds_celltype.pdf", width = 8, height = 6)
+plot_cells(cds, color_cells_by="Celltype")
+dev.off()
+pdf("/home/jaehyunchoi/project/Byst_collaboration/analysis/monocle3_plot_cds_geneexpr.pdf", width = 8, height = 6)
+plot_cells(cds, genes=c("Areg", "Il13", "Il5", "Pdcd1","Foxp3"))
+dev.off()
