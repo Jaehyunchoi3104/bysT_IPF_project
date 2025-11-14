@@ -1,0 +1,552 @@
+---
+title: "mmLung_Spleen_bulkRNA"
+author: "Jaehyun Choi"
+date: "2025-09-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(Seurat)
+library(MAST)
+library(dittoSeq)
+library(caret)
+library(ranger)
+library(feseR)
+#  install.packages("devtools")
+library(devtools)
+#install_github("enriquea/feseR")
+library(feseR)
+library(pROC)
+library(reticulate)
+library(SingleR)
+library(slingshot)
+library(celldex)
+library(scCATCH)
+library(dplyr)
+```
+
+# Count importing
+```{r}
+setwd("~/bystander_collaboration/bulk_data/count")
+
+samples <- c(
+"sample1_count",
+"sample2_count",
+"sample3_count",
+"sample4_count",
+"sample5_count",
+"sample6_count",
+"sample7_count",
+"sample8_count",
+"sample9_count",
+"sample10_count",
+"sample11_count",
+"sample12_count"
+);
+infiles <- paste(samples, ".out", sep="");
+inlist <- lapply(infiles, read.table);
+alltrans <- unique(unlist(lapply(inlist, "[[", 1), use.names=FALSE));
+
+## construct empty count matrix
+CM <- structure(matrix(as.integer(NA),
+                       nrow=length(alltrans),
+                       ncol=length(samples)),
+                dimnames=list(alltrans, samples))
+
+## fill count matrix
+for (i in 1:length(samples)) {
+  CM[match(inlist[[i]]$V1, rownames(CM)), i] <- inlist[[i]]$V2;
+}
+
+## drop non-unique alignments and other non-gene entries
+dropClasses <- c("__alignment_not_unique", "__no_feature", "__ambiguous",
+                 "__too_low_aQual", "__not_aligned")
+
+if (any(dropClasses %in% rownames(CM)))
+  CM <- CM[-match(dropClasses, rownames(CM)),]
+
+colnames(CM) <- c(
+"mmLung_highPD1_MPCD4T_Rep1",
+"mmLung_lowPD1_MPCD4T_Rep1", 
+"mmLung_highPD1_MPCD4T_Rep2", 
+"mmLung_lowPD1_MPCD4T_Rep2",
+"mmLung_highPD1_MPCD4T_Rep3",
+"mmLung_lowPD1_MPCD4T_Rep3",
+"mmSpleen_highPD1_MPCD4T_Rep1",
+"mmSpleen_lowPD1_MPCD4T_Rep1",
+"mmSpleen_highPD1_MPCD4T_Rep2",
+"mmSpleen_lowPD1_MPCD4T_Rep2",
+"mmSpleen_highPD1_MPCD4T_Rep3",
+"mmSpleen_lowPD1_MPCD4T_Rep3"
+)
+#write.csv(as.data.frame(CM), file="CM.csv")
+```
+
+## bulk data QC
+
+```{r}
+setwd("~/bystander_collaboration/bulk_data/analysis")
+
+barplot(colSums(CM), col="sienna", las=2, cex.names =0.6, cex.axis=0.6, ylab = "library size")
+mtext(side=2, line=4.5, text="Number of transcript-counted reads", font=2)
+
+#pdf("bulkRNA_barplot_IPF.pdf", width = 6, height = 5)
+#p <- barplot(colSums(CM), col="sienna", las=2, cex.names =0.6, cex.axis=0.6, ylab = "library size")
+#mtext(side=2, line=4.5, text="Number of transcript-counted reads", font=2)
+#print(p)
+#dev.off()
+
+## Make condition column for the sample information
+cts <- CM
+coldata <- as.data.frame(c("Lung_PD1high","Lung_PD1low","Lung_PD1high","Lung_PD1low","Lung_PD1high","Lung_PD1low","Spleen_PD1high","Spleen_PD1low","Spleen_PD1high","Spleen_PD1low","Spleen_PD1high","Spleen_PD1low"))
+rownames(coldata) <- colnames(cts)
+colnames(coldata) <- "condition"
+
+## To extract normalized read count
+library("DESeq2")
+dds <- DESeqDataSetFromMatrix(countData = cts, colData = coldata, design = ~ condition)
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep,]
+dds <- DESeq(dds)
+normcount <- counts(dds, normalized=TRUE)
+#write.csv(as.data.frame(normcount), file="normcount.csv")
+
+## HVG analysis 
+gene_vars <- apply(normcount, 1, var)
+top3000_genes <- names(sort(gene_vars, decreasing = TRUE))[1:3000]
+normcount_top3000 <- normcount[top3000_genes, ]
+
+### correlation:
+CM.cor <- cor(normcount, method="spearman")
+## general correlation between samples:
+CM.dists <- 1-as.dist(cor(normcount, method="spearman"))
+CM.hc <- hclust(CM.dists)
+plot(CM.hc, main=NA, xlab="Spearman correlation distance")
+
+## general correlation between samples:  
+CM.dists <- 1 - as.dist(cor(normcount_top3000, method = "spearman"))
+CM.hc <- hclust(CM.dists)  
+plot(CM.hc, main = "Sample Clustering based on HVG 3000", xlab = "Spearman correlation distance")
+```
+
+## PCA analysis
+```{r}
+# lung 샘플 (앞의 6개)
+lung_samples <- c(
+  "mmLung_highPD1_MPCD4T_Rep1",
+  "mmLung_lowPD1_MPCD4T_Rep1", 
+  "mmLung_highPD1_MPCD4T_Rep2", 
+  "mmLung_lowPD1_MPCD4T_Rep2",
+  "mmLung_highPD1_MPCD4T_Rep3",
+  "mmLung_lowPD1_MPCD4T_Rep3"
+)
+
+# spleen 샘플 (7번째부터 끝까지, sample7은 주석처리되어 제외됨)
+spleen_samples <- c(
+  "mmSpleen_highPD1_MPCD4T_Rep1",
+  "mmSpleen_lowPD1_MPCD4T_Rep1",
+  "mmSpleen_highPD1_MPCD4T_Rep2",
+  "mmSpleen_lowPD1_MPCD4T_Rep2",
+  "mmSpleen_highPD1_MPCD4T_Rep3",
+  "mmSpleen_lowPD1_MPCD4T_Rep3"
+)
+
+# 분리된 matrix
+lung_norm <- normcount[, lung_samples]
+spleen_norm <- normcount[, spleen_samples]
+
+## lung PCA
+lung_norm_log2 <- log2(lung_norm + 1)
+lung_var <- apply(lung_norm_log2, 1, sd)
+lung_norm_filtered <- lung_norm_log2[lung_var > 0, ]
+
+data_sub_t <- as.data.frame(t(lung_norm_filtered))
+pca_result <- prcomp(data_sub_t, center = TRUE, scale. = TRUE)
+ind.coord <- pca_result$x
+
+lung_colors <- c("red", "blue", "red", "blue","red", "blue")
+lung_colors <- c("red", "blue", "orange", "skyblue", "pink", "green")
+
+plot(ind.coord[,1], ind.coord[,2], col=lung_colors, pch=16, xlab="PC1", ylab="PC2")
+legend("topright", legend=c("PD1-high", "PD1-low"), col=c("red", "blue"), pch=16)
+
+plot(ind.coord[,1], ind.coord[,2], col = lung_colors, pch = 16, xlab = "PC1", ylab = "PC2")
+text(ind.coord[,1], ind.coord[,2], labels = rownames(ind.coord), pos = 3, cex = 0.7)
+
+lung_colors <- c("red", "blue", "red", "blue","red", "blue")
+pdf("bulkRNA_lungIPF_PCA.pdf", width = 6, height = 5)
+lung_colors <- c("red", "blue", "red", "blue","red", "blue")
+# 플롯 생성
+p <- plot(ind.coord[,1], ind.coord[,2], col = lung_colors, pch = 16, xlab = "PC1", ylab = "PC2")
+#text(ind.coord[,1], ind.coord[,2], labels = rownames(ind.coord), pos = 3, cex = 0.7)
+
+# 플롯 출력
+print(p)
+dev.off()
+
+lung_colors <- c("red", "blue", "orange", "skyblue", "pink", "green")
+pdf("bulkRNA_lungIPF_PCA_specific.pdf", width = 6, height = 5)
+
+# 플롯 생성
+p <- plot(ind.coord[,1], ind.coord[,2], col = lung_colors, pch = 16, xlab = "PC1", ylab = "PC2")
+text(ind.coord[,1], ind.coord[,2], labels = rownames(ind.coord), pos = 3, cex = 0.7)
+
+# 플롯 출력
+print(p)
+dev.off()
+
+
+# Lung Eigenvalues
+eig <- (pca_result$sdev)^2
+# Variances in percentage
+variance <- eig*100/sum(eig)
+# Cumulative variances
+cumvar <- cumsum(variance)
+eig.decathlon2.active <- data.frame(eig = eig, variance = variance,
+                     cumvariance = cumvar)
+head(eig.decathlon2.active)
+
+
+#barplot(eig.decathlon2.active[, 2], names.arg=1:nrow(eig.decathlon2.active), 
+barplot(eig.decathlon2.active[1:10, 2], names.arg=1:10, 
+       main = "Variances",
+       xlab = "Principal Components",
+       ylab = "Percentage of variances",
+       col ="steelblue")
+# Add connected line segments to the plot
+lines(x = 1:10, 
+      eig.decathlon2.active[1:10, 2], 
+      type="b", pch=19, col = "red")
+
+pdf("eigen_bargraph_IPF.pdf", width = 6, height = 5)
+
+# 플롯 생성
+p <- barplot(eig.decathlon2.active[1:10, 2], names.arg=1:10, 
+       main = "Variances",
+       xlab = "Principal Components",
+       ylab = "Percentage of variances",
+       col ="steelblue")
+# Add connected line segments to the plot
+lines(x = 1:10, 
+      eig.decathlon2.active[1:10, 2], 
+      type="b", pch=19, col = "red")
+
+# 플롯 출력
+print(p)
+dev.off()
+
+
+lung_log2 <- log2(lung_norm + 1)
+pairs(lung_log2,
+      main = "Pairwise Scatter Plot: Lung Samples",
+      pch = 19, cex = 0.5)
+
+library(GGally)
+
+lung_log2_t <- as.data.frame(t(lung_log2))
+lung_log2_t$Group <- factor(c("PD1-high", "PD1-low", "PD1-high", "PD1-low", "PD1-high", "PD1-low"))
+
+# ggpairs 그리기
+GGally::ggpairs(lung_log2_t[, 1:(ncol(lung_log2_t)-1)],   # 유전자들만
+                title = "Pairwise Scatter (Lung samples)",
+                mapping = ggplot2::aes(color = lung_log2_t$Group),
+                lower = list(continuous = "points"),
+                diag = list(continuous = "densityDiag"),
+                upper = list(continuous = "cor"))
+
+
+## Spleen PCA
+spleen_norm_log2 <- log2(spleen_norm + 1)
+spleen_var <- apply(spleen_norm_log2, 1, sd)
+spleen_norm_filtered <- spleen_norm_log2[spleen_var > 0, ]
+
+data_sub_t <- as.data.frame(t(spleen_norm_filtered))
+pca_result <- prcomp(data_sub_t, center = TRUE, scale. = TRUE)
+ind.coord <- pca_result$x
+
+spleen_colors <- c("red", "blue", "red", "blue", "red", "blue")
+spleen_colors <- c("red", "blue", "orange", "skyblue", "pink", "green")
+
+plot(ind.coord[,1], ind.coord[,2], col=spleen_colors, pch=16, xlab="PC1", ylab="PC2")
+legend("topright", legend=c("PD1-high", "PD1-low"), col=c("red", "blue"), pch=16)
+
+plot(ind.coord[,1], ind.coord[,2], col = spleen_colors, pch = 16, xlab = "PC1", ylab = "PC2")
+text(ind.coord[,1], ind.coord[,2], labels = rownames(ind.coord), pos = 3, cex = 0.7)
+
+spleen_colors <- c("red", "blue", "red", "blue","red", "blue")
+pdf("bulkRNA_spleenIPF_PCA.pdf", width = 6, height = 5)
+spleen_colors <- c("red", "blue", "red", "blue","red", "blue")
+# 플롯 생성
+p <- plot(ind.coord[,1], ind.coord[,2], col = spleen_colors, pch = 16, xlab = "PC1", ylab = "PC2")
+#text(ind.coord[,1], ind.coord[,2], labels = rownames(ind.coord), pos = 3, cex = 0.7)
+
+# 플롯 출력
+print(p)
+dev.off()
+
+spleen_colors <- c("red", "blue", "orange", "skyblue", "pink", "green")
+pdf("bulkRNA_spleenIPF_PCA_specific.pdf", width = 6, height = 5)
+
+# 플롯 생성
+p <- plot(ind.coord[,1], ind.coord[,2], col = spleen_colors, pch = 16, xlab = "PC1", ylab = "PC2")
+text(ind.coord[,1], ind.coord[,2], labels = rownames(ind.coord), pos = 3, cex = 0.7)
+
+# 플롯 출력
+print(p)
+dev.off()
+
+
+
+# Lung Eigenvalues
+eig <- (pca_result$sdev)^2
+# Variances in percentage
+variance <- eig*100/sum(eig)
+# Cumulative variances
+cumvar <- cumsum(variance)
+eig.decathlon2.active <- data.frame(eig = eig, variance = variance,
+                     cumvariance = cumvar)
+head(eig.decathlon2.active)
+
+
+#barplot(eig.decathlon2.active[, 2], names.arg=1:nrow(eig.decathlon2.active), 
+barplot(eig.decathlon2.active[1:10, 2], names.arg=1:10, 
+       main = "Variances",
+       xlab = "Principal Components",
+       ylab = "Percentage of variances",
+       col ="steelblue")
+# Add connected line segments to the plot
+lines(x = 1:10, 
+      eig.decathlon2.active[1:10, 2], 
+      type="b", pch=19, col = "red") 
+```
+
+## Lung analysis
+
+```{r}
+
+library(org.Mm.eg.db)
+library(clusterProfiler)
+
+##  subset to lung only
+lung_samples <- grep("^mmLung", colnames(CM), value = TRUE)
+lung_counts <- CM[, lung_samples]
+
+## Make condition column for the sample information
+cts <- lung_counts
+coldata <- as.data.frame(c("Lung_PD1high","Lung_PD1low","Lung_PD1high","Lung_PD1low","Lung_PD1high","Lung_PD1low"))
+rownames(coldata) <- colnames(cts)
+colnames(coldata) <- "condition"
+
+# DESeq2 object
+dds <- DESeqDataSetFromMatrix(countData = cts, colData = coldata, design = ~ condition)
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep,]
+dds <- DESeq(dds)
+
+res <- results(dds, contrast=c("condition", "Lung_PD1high","Lung_PD1low"))
+
+plotMA(res, ylim=c(-2,2))
+plotCounts(dds, gene=which.min(res$padj), intgroup="condition")
+
+# Heatmap
+res$DEG <- 2
+
+res[res$padj<0.05 & res$log2FoldChange>0.58 & is.na(res$padj)==0, 7] <- 1 ##Up-regulated genes
+res[res$padj<0.05 & res$log2FoldChange<(-0.58) & is.na(res$padj)==0, 7] <- 3 ##Down-regulated genes
+library (pheatmap)
+library (gplots)
+
+breaksList = seq(-3, 3, by = 0.1)
+breaksList=append(breaksList, 20)
+breaksList=append(breaksList, -20, 0)
+mycol <- colorpanel(n=length(breaksList)-1,low="blue", mid = "white", high="red")
+
+mat <- normcount[res$DEG != 2, 1:6]
+mat <- mat[complete.cases(mat), ]
+mat <- mat[apply(mat, 1, sd) != 0, ]
+mat <- mat[!rowSums(!is.finite(as.matrix(mat))), ]
+
+pheatmap(mat,
+         show_rownames = FALSE,
+         show_colnames = TRUE,
+         cluster_cols = FALSE,
+         cluster_rows = TRUE,
+         scale = "row",
+         col = mycol,
+         breaks = breaksList,
+         clustering_distance_cols = "euclidean",
+         cex = 0.8)
+
+# DEG 유전자 중에서 log2FC 기준 정렬
+selected_genes <- rownames(res)[res$DEG != 2]
+res_sub <- res[selected_genes, ]
+res_sub <- res_sub[order(res_sub$log2FoldChange, decreasing = TRUE), ]
+
+# 정렬된 유전자 순서로 count matrix 추출
+mat <- normcount[rownames(res_sub), 1:6]
+
+# 필터링 (NA, sd=0, Inf 등 제거)
+mat <- mat[complete.cases(mat), ]
+mat <- mat[apply(mat, 1, sd) != 0, ]
+mat <- mat[!rowSums(!is.finite(as.matrix(mat))), ]
+
+# Heatmap (cluster_rows = FALSE 하면 정렬 순서 유지)
+pheatmap(mat,
+         show_rownames = FALSE,
+         show_colnames = TRUE,
+         cluster_cols = TRUE,
+         cluster_rows = FALSE,  # ✅ 정렬된 순서대로 보여주기 위해 FALSE
+         scale = "row",
+         col = mycol,
+         breaks = breaksList,
+         clustering_distance_cols = "euclidean",
+         cex = 0.8)
+
+```
+pdf("bulkRNA_heatmap_mmLung.pdf", width = 6, height = 5)
+
+pheatmap(mat,
+         show_rownames = FALSE,
+         show_colnames = TRUE,
+         cluster_cols = FALSE,
+         cluster_rows = FALSE,
+         scale = "row",
+         col = mycol,
+         breaks = breaksList,
+         clustering_distance_cols = "euclidean",
+         cex = 0.8)
+
+dev.off()
+
+``` {r}
+# ENSEMBL to Gene Symbol
+summary(res)
+
+rownames(res) <- sub("\\..*", "", rownames(res))
+
+# ENSEMBL → SYMBOL 매핑
+gene_df <- bitr(rownames(res),
+                fromType = "ENSEMBL",
+                toType = "SYMBOL",
+                OrgDb = org.Mm.eg.db)
+                
+# DESeq2 결과(res)에 SYMBOL 붙이기
+res$SYMBOL <- gene_df$SYMBOL[match(rownames(res), gene_df$ENSEMBL)]
+
+write.csv(as.data.frame(res), file="DESeq_result_mmLung.csv")
+
+
+```
+
+## Spleen analysis
+
+```{r}
+
+##  subset to Spleen only
+spleen_samples <- grep("^mmSpleen", colnames(CM), value = TRUE)
+spleen_counts <- CM[, spleen_samples]
+
+## Make condition column for the sample information
+cts <- spleen_counts
+coldata <- as.data.frame(c("Spleen_PD1high","Spleen_PD1low","Spleen_PD1high","Spleen_PD1low","Spleen_PD1high","Spleen_PD1low"))
+rownames(coldata) <- colnames(cts)
+colnames(coldata) <- "condition"
+
+# DESeq2 object
+dds <- DESeqDataSetFromMatrix(countData = cts, colData = coldata, design = ~ condition)
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep,]
+dds <- DESeq(dds)
+
+res <- results(dds, contrast=c("condition", "Spleen_PD1high","Spleen_PD1low"))
+
+plotMA(res, ylim=c(-2,2))
+plotCounts(dds, gene=which.min(res$padj), intgroup="condition")
+# Heatmap
+res$DEG <- 2
+
+res[res$padj<0.05 & res$log2FoldChange>0.58 & is.na(res$padj)==0, 7] <- 1 ##Up-regulated genes
+res[res$padj<0.05 & res$log2FoldChange<(-0.58) & is.na(res$padj)==0, 7] <- 3 ##Down-regulated genes
+library (pheatmap)
+library (gplots)
+
+breaksList = seq(-3, 3, by = 0.1)
+breaksList=append(breaksList, 20)
+breaksList=append(breaksList, -20, 0)
+mycol <- colorpanel(n=length(breaksList)-1,low="blue", mid = "white", high="red")
+
+mat <- normcount[res$DEG != 2, 1:6]
+mat <- mat[complete.cases(mat), ]
+mat <- mat[apply(mat, 1, sd) != 0, ]
+mat <- mat[!rowSums(!is.finite(as.matrix(mat))), ]
+
+pheatmap(mat,
+         show_rownames = FALSE,
+         show_colnames = TRUE,
+         cluster_cols = FALSE,
+         cluster_rows = TRUE,
+         scale = "row",
+         col = mycol,
+         breaks = breaksList,
+         clustering_distance_cols = "euclidean",
+         cex = 0.8)
+
+# DEG 유전자 중에서 log2FC 기준 정렬
+selected_genes <- rownames(res)[res$DEG != 2]
+res_sub <- res[selected_genes, ]
+res_sub <- res_sub[order(res_sub$log2FoldChange, decreasing = TRUE), ]
+
+# 정렬된 유전자 순서로 count matrix 추출
+mat <- normcount[rownames(res_sub), 1:6]
+
+# 필터링 (NA, sd=0, Inf 등 제거)
+mat <- mat[complete.cases(mat), ]
+mat <- mat[apply(mat, 1, sd) != 0, ]
+mat <- mat[!rowSums(!is.finite(as.matrix(mat))), ]
+
+# Heatmap (cluster_rows = FALSE 하면 정렬 순서 유지)
+pheatmap(mat,
+         show_rownames = FALSE,
+         show_colnames = TRUE,
+         cluster_cols = TRUE,
+         cluster_rows = FALSE,  # ✅ 정렬된 순서대로 보여주기 위해 FALSE
+         scale = "row",
+         col = mycol,
+         breaks = breaksList,
+         clustering_distance_cols = "euclidean",
+         cex = 0.8)
+
+```
+pdf("bulkRNA_heatmap_mmLung.pdf", width = 6, height = 5)
+
+pheatmap(mat,
+         show_rownames = FALSE,
+         show_colnames = TRUE,
+         cluster_cols = FALSE,
+         cluster_rows = FALSE,
+         scale = "row",
+         col = mycol,
+         breaks = breaksList,
+         clustering_distance_cols = "euclidean",
+         cex = 0.8)
+
+dev.off()
+``` {r}
+# ENSEMBL to Gene Symbol
+summary(res)
+
+rownames(res) <- sub("\\..*", "", rownames(res))
+
+# ENSEMBL → SYMBOL 매핑
+gene_df <- bitr(rownames(res),
+                fromType = "ENSEMBL",
+                toType = "SYMBOL",
+                OrgDb = org.Mm.eg.db)
+                
+# DESeq2 결과(res)에 SYMBOL 붙이기
+res$SYMBOL <- gene_df$SYMBOL[match(rownames(res), gene_df$ENSEMBL)]
+
+write.csv(as.data.frame(res), file="DESeq_result_mmSpleen.csv")
+
+
+```
