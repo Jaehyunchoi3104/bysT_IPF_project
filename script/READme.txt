@@ -19,8 +19,8 @@ GO and KEGG analyses were performed using differentially expressed genes (log₂
 
 [Public human IPF data] _GSE122960,GSE135893,GSE136831
 1. Preprocessing: 11_IPF_merging_preprocessing.ipynb [conda env conda1]
-2. Clustering: 12_IPF_clustering.ipynb [conda env conda1]
-3. DEG Analysis: 13_IPF_DEG_analysis.md [R] 
+2. Whole data analysis: 12_IPF_clustering.ipynb [conda env conda1]
+3. CD4 + T cell analysis: 13_IPF_CD4T_analysis.md [conda env conda1]
 GO and KEGG analyses were performed using differentially expressed genes (log₂ fold change > 0.58, adjusted P-value < 0.05) through the DAVID functional annotation tool
 4. deconvolution analysis: 
 5. Visium preprocessing: 
