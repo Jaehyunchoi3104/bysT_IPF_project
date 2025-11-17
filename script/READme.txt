@@ -8,7 +8,7 @@
 - processed: filtered and normalized with Scanpy and R,  see 01_preprocessing.ipynb
 
 [In vivo mouse data]
-1. Preprocessing: [[01_preprocessing.ipynb]] [conda env conda1]
+1. Preprocessing: 01_preprocessing.ipynb [conda env conda1]
 2. Clustering: 02_clustering.ipynb [conda env conda1]
 3. DEG Analysis: 03_DEG_analysis.md [R] 
 GO and KEGG analyses were performed using differentially expressed genes (log₂ fold change > 0.58, adjusted P-value < 0.05) through the DAVID functional annotation tool
