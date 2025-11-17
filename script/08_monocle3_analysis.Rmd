@@ -1,0 +1,77 @@
+---
+title: "Monocl3_analysis"
+output: html_document
+date: "2025-11-17"
+---
+
+```{r setup, include=FALSE}
+library(Seurat)
+library(SeuratWrappers)
+library(monocle3)
+
+plot_dir <- "/home/jaehyunchoi/project/Byst_collaboration/revision/Figures"
+
+# Save any plot as PNG
+save_plot_pdf <- function(filename, plot_expr, width=7, height=5) {
+  filepath <- file.path(plot_dir, filename)
+  pdf(filepath, width = width, height = height)
+  plot_expr()
+  dev.off()
+  message("Saved: ", filepath)
+}
+```
+
+
+
+```{r cars}
+# Final adata importing
+expression_matrix <- readMM("/home/jaehyunchoi/project/Byst_collaboration/revision/adata_matrix.mtx")
+cell_metadata <- read.csv("/home/jaehyunchoi/project/Byst_collaboration/revision/adata_cell_metadata.csv", row.names = 1)
+gene_annotation <- read.csv("/home/jaehyunchoi/project/Byst_collaboration/revision/adata_gene_metadata.csv", row.names = 1)
+
+# cds object creating
+cds <- new_cell_data_set(expression_matrix,
+                         cell_metadata = cell_metadata,
+                         gene_metadata = gene_annotation)
+
+cds <- reduce_dimension(cds)
+cds <- reduce_dimension(cds, reduction_method="tSNE")
+cds <- reduce_dimension(cds, reduction_method="UMAP")
+
+cds <- align_cds(cds, num_dim = 100, alignment_group = "batch")
+cds <- reduce_dimension(cds, reduction_method="tSNE")
+cds <- reduce_dimension(cds, reduction_method="UMAP")
+
+cds <- preprocess_cds(cds, num_dim = 100)
+plot_pc_variance_explained(cds)
+
+save_plot_pdf("batch_correction_umap_plot.pdf", function() {
+  print(plot_cells(cds,reduction_method="UMAP", color_cells_by="batch", label_cell_groups=FALSE))
+})
+
+cds_subset <- choose_cells(cds)
+cds <- cluster_cells(cds)
+cds <- learn_graph(cds)
+cds <- order_cells(cds)
+
+save_plot_pdf("monocle_pseudo_plot.pdf", function() {
+  print(plot_cells(cds,
+           color_cells_by = "pseudotime",
+           label_cell_groups=FALSE,
+           label_leaves=FALSE,
+           label_branch_points=FALSE,
+           graph_label_size=1.5))
+}) 
+
+ cds_sub <- choose_graph_segments(cds)
+> save_plot_pdf("monocle_pseudo_plot_true.pdf", function() {
+  print(plot_cells(cds,
+           color_cells_by = "pseudotime",
+           label_cell_groups=FALSE,
+           label_leaves=TRUE,
+           label_branch_points=FALSE,
+           graph_label_size=1.5))
+}) 
+```
+
+
