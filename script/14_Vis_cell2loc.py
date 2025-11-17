@@ -9,10 +9,10 @@ import cell2location
 from cell2location.utils.filtering import filter_genes
 from cell2location.models import RegressionModel
 
-# 1. 저장된 reference anndata 불러오기
+# export reference anndata
 adata_ref = sc.read_h5ad("/home/sbblab_test/jaehyunchoi/IPF_cell2loc/sc.h5ad")
 
-# 2. 저장된 모델 불러오기
+# export models
 mod = cell2location.models.RegressionModel.load(
     "/home/sbblab_test/jaehyunchoi/IPF_cell2loc/IPF_reference_model",
     adata_ref
@@ -28,8 +28,9 @@ else:
 inf_aver.columns = adata_ref.uns['mod']['factor_names']
 inf_aver.iloc[0:5, 0:5]
 
-
-adata_vis = sc.read_h5ad("/home/sbblab_test/jaehyunchoi/IPF_cell2loc/IPF_lung_trial03.h5ad")
+#adata_vis = sc.read_h5ad("/home/sbblab_test/jaehyunchoi/IPF_cell2loc/IPF_lung_trial01.h5ad") 
+#adata_vis = sc.read_h5ad("/home/sbblab_test/jaehyunchoi/IPF_cell2loc/IPF_lung_trial02.h5ad") 
+adata_vis = sc.read_h5ad("/home/sbblab_test/jaehyunchoi/IPF_cell2loc/IPF_lung_trial03.h5ad") 
 
 intersect = np.intersect1d(adata_vis.var_names, inf_aver.index)
 adata_vis = adata_vis[:, intersect].copy()
@@ -59,6 +60,8 @@ adata_vis = mod_vis.export_posterior(
     sample_kwargs={'num_samples': 1000, 'batch_size': adata_vis.n_obs}
 )
 # Save model
+#mod_vis.save("/home/sbblab_test/jaehyunchoi/IPF_cell2loc/mod_vis01", overwrite=True)
+#mod_vis.save("/home/sbblab_test/jaehyunchoi/IPF_cell2loc/mod_vis02", overwrite=True)
 mod_vis.save("/home/sbblab_test/jaehyunchoi/IPF_cell2loc/mod_vis03", overwrite=True)
 
 # Save anndata object with results
@@ -72,4 +75,6 @@ final_loss = history_df.iloc[-1].values[0]  # ELBO 값
 
 print(f"Fiest epoch: {first_epoch}, ELBO loss: {first_loss}")
 print(f"Final epoch: {final_epoch}, ELBO loss: {final_loss}")
+#history_df.to_csv("/home/sbblab_test/jaehyunchoi/IPF_cell2loc/IPF_lung_trial01_elbo.csv")
+#history_df.to_csv("/home/sbblab_test/jaehyunchoi/IPF_cell2loc/IPF_lung_trial02_elbo.csv")
 history_df.to_csv("/home/sbblab_test/jaehyunchoi/IPF_cell2loc/IPF_lung_trial03_elbo.csv")
