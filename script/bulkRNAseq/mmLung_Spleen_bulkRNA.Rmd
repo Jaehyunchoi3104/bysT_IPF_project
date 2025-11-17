@@ -247,7 +247,7 @@ lung_log2_t <- as.data.frame(t(lung_log2))
 lung_log2_t$Group <- factor(c("PD1-high", "PD1-low", "PD1-high", "PD1-low", "PD1-high", "PD1-low"))
 
 # ggpairs 그리기
-GGally::ggpairs(lung_log2_t[, 1:(ncol(lung_log2_t)-1)],   # 유전자들만
+GGally::ggpairs(lung_log2_t[, 1:(ncol(lung_log2_t)-1)],  
                 title = "Pairwise Scatter (Lung samples)",
                 mapping = ggplot2::aes(color = lung_log2_t$Group),
                 lower = list(continuous = "points"),
@@ -280,7 +280,6 @@ spleen_colors <- c("red", "blue", "red", "blue","red", "blue")
 p <- plot(ind.coord[,1], ind.coord[,2], col = spleen_colors, pch = 16, xlab = "PC1", ylab = "PC2")
 #text(ind.coord[,1], ind.coord[,2], labels = rownames(ind.coord), pos = 3, cex = 0.7)
 
-# 플롯 출력
 print(p)
 dev.off()
 
@@ -395,7 +394,7 @@ pheatmap(mat,
          show_rownames = FALSE,
          show_colnames = TRUE,
          cluster_cols = TRUE,
-         cluster_rows = FALSE,  # ✅ 정렬된 순서대로 보여주기 위해 FALSE
+         cluster_rows = FALSE,
          scale = "row",
          col = mycol,
          breaks = breaksList,
@@ -509,7 +508,7 @@ pheatmap(mat,
          show_rownames = FALSE,
          show_colnames = TRUE,
          cluster_cols = TRUE,
-         cluster_rows = FALSE,  # ✅ 정렬된 순서대로 보여주기 위해 FALSE
+         cluster_rows = FALSE, 
          scale = "row",
          col = mycol,
          breaks = breaksList,
