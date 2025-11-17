@@ -9,5 +9,5 @@ All codes used in this study are available here.
 Min-Ji Cho, Jaehyun Choi, Anton Rakhman, Jae-Won Yoon, Yong Gyun Ko, Hye Young Kim, Gap Ryol Lee, Hyobin Jeong and Je-Min Choi
 
 
-Cite the code: [![DOI](https://zenodo.org/badge/996582362.svg)](https://doi.org/10.5281/zenodo.15612886)
+Cite the code: [[![DOI](https://zenodo.org/badge/996582362.svg)](https://doi.org/10.5281/zenodo.15612886)](https://doi.org/10.5281/zenodo.17630001)
 
