@@ -23,8 +23,8 @@ GO and KEGG analyses were performed using differentially expressed genes (log₂
 3. CD4 + T cell analysis: 13_IPF_CD4T_analysis.md [conda env conda1]
 GO and KEGG analyses were performed using differentially expressed genes (log₂ fold change > 0.58, adjusted P-value < 0.05) through the DAVID functional annotation tool
 4. deconvolution analysis: 14_Vis_cell2loc.py 15_Vis_cell2loc.sh
-5. Visium preprocessing: 
-6. Visium distance correlation analysis : 
+5. Visium preprocessing: 16_Vis_spatial_analysis.ipynb [conda env spatial]
+6. Visium distance correlation analysis : 17_Vis_radial_distance_analysis.ipynb [conda env spatial]
 
 
 
